@@ -21,12 +21,21 @@ class PackageInfo(TypedDict, total=False):
     peerDependencies: StrSetArrayType
 
 
-@dataclass
-class PluginInfo:
-    name: str
-    version: str
-    _ = KW_ONLY
+class PluginInfoBasic:
     sid: Optional[uuid.UUID | str] = None
+    name: Optional[str] = None
+
+    def __init__(self):
+        if not (self.name or self.sid):
+            raise TypeError(f'Invalid {PluginInfoBasic}')
+
+
+@dataclass
+class PluginInfo(PluginInfoBasic):
+    sid: Optional[uuid.UUID | str] = None
+    name: Optional[str] = None
+    version: Optional[str] = None
+    _ = KW_ONLY
     description: Optional[str] = ''
     packageInfo: Optional[PackageInfo] = field(default_factory=PackageInfo)
 
@@ -61,6 +70,13 @@ class JavascriptError(TypedDict):
 class BaseEvent:
     type: EventType
 
+@dataclass
+class DataEvent(BaseEvent):
+    """
+    Message Event: brings a dict in event
+    :var data: the dict to bring
+    """
+    data: dict | tuple | list
 
 @dataclass
 class MessageEvent(BaseEvent):

@@ -7,14 +7,14 @@ from quart import Websocket
 
 from dataclasses import asdict
 
-from .structures import Handler, MessageEvent, EventType
+from .structures import Handler, MessageEvent, EventType, DataEvent
 
 
 class PluginService:
     _inited = False
     services: dict[uuid.UUID, Self] = {}
 
-    def __new__(cls, name: str, report_handlers: list[Handler] = None, sid: uuid.UUID = None):
+    def __new__(cls, name: str = None, report_handlers: list[Handler] = None, sid: uuid.UUID = None):
         if sid and sid in cls.services:
             obj = cls.services[sid]
             obj._inited = True
@@ -28,6 +28,8 @@ class PluginService:
         return obj
 
     def __init__(self, name: str, report_handlers: list[Handler] = None, sid: uuid.UUID = None):
+        if not (name or sid):
+            raise TypeError(f'Invalid {self.__class__}')
         if self._inited:
             return
 
@@ -35,7 +37,7 @@ class PluginService:
         if sid is None:
             sid = uuid.uuid4()
         self._sid = sid
-        self.createTime = datetime.datetime.utcnow()
+        self.create_date = datetime.datetime.utcnow()
         self.name = name
         if report_handlers:
             report_handlers = []
@@ -46,7 +48,14 @@ class PluginService:
     async def receive(self, websocket: Websocket):
         self.websockets.append(websocket)
         await websocket.send_json(asdict(
-            MessageEvent(type=EventType.message, message=str(self.sid))
+            DataEvent(
+                type=EventType.message,
+                data={
+                    "sid": str(self.sid),
+                    "name": str(self.name),
+                    "created": str(self.create_date)
+                }
+            )
         ))
 
     async def broadcast(self, message: str, **kwargs):
