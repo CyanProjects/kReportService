@@ -70,13 +70,15 @@ class JavascriptError(TypedDict):
 class BaseEvent:
     type: EventType
 
+
 @dataclass
 class DataEvent(BaseEvent):
     """
-    Message Event: brings a dict in event
-    :var data: the dict to bring
+    Message Event: brings a struct in event
+    :var data: the struct(dict, tuple or list) to bring
     """
     data: dict | tuple | list
+
 
 @dataclass
 class MessageEvent(BaseEvent):
