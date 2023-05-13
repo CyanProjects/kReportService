@@ -8,7 +8,7 @@ from typing import Dict
 
 from quart import Blueprint, request, jsonify
 
-Bp = Blueprint('legacy', __name__, url_prefix='/api/vanilla')
+Bp = Blueprint('legacy', __name__, url_prefix='/api/legacy')
 request_dict: Dict[str, datetime.datetime] = {}  # ip: time.time()
 
 emailUser = {
