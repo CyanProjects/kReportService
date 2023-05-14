@@ -201,6 +201,7 @@ class ReportEvent(UpEvent):
     timestamp: int | float | datetime.datetime = datetime.datetime.utcnow()
     info: Optional[str] = None
     error: Optional[JavascriptError] = None
+    log: Optional[str] = None
 
     def __post_init__(self):
         self.type = UpEventType.report
@@ -222,3 +223,43 @@ class Handler(ABC):
     @abstractmethod
     async def emit(self, report: UpEvent):
         pass
+
+
+class ReportHandler(Handler, ABC):
+    type = UpEventType.report
+
+    @abstractmethod
+    async def emit(self, report: ReportEvent):
+        pass
+
+
+class NoticeHandler(Handler, ABC):
+    type = GeneralEventType.notice
+
+    @abstractmethod
+    async def emit(self, report: BaseEvent):
+        pass
+
+
+class ResponseHelper:
+    template = {
+        'code': 200,
+        'msg': None,
+        'data': None
+    }
+
+    @classmethod
+    def gen_json_str(cls, dictionary: dict):
+        template_dict = cls.template
+        template_dict.update(dictionary)
+        return json.dumps(template_dict, ensure_ascii=False)
+
+    @classmethod
+    def gen_json_response(cls, dictionary: dict, _status: HTTPStatus = HTTPStatus.OK):
+        return Response(cls.gen_json_str(dictionary), status=_status)
+
+    @classmethod
+    def gen_kw_json_response(cls, _status: HTTPStatus = HTTPStatus.OK, **kwargs):
+        return cls.gen_json_response(kwargs, _status=_status)
+
+    gen_kw = gen_kw_json_response
