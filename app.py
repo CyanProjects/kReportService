@@ -1,11 +1,6 @@
-import pathlib
-
-import ever_loguru
-from quart import Quart
-
+from blueprints.http_service import Bp as HTTPService
 from blueprints.legacy import Bp as LegacyAPI
 from blueprints.ws_status import Bp as ServiceWS
-from blueprints.http_service import Bp as HTTPService
 from create_app import create_app
 
 app = create_app()

@@ -1,6 +1,5 @@
 import asyncio
 import uuid
-from dataclasses import asdict
 
 from quart import Blueprint, websocket
 

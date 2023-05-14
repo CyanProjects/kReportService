@@ -5,7 +5,10 @@ import pathlib
 import pickle
 import uuid
 from dataclasses import asdict, is_dataclass
-from typing import Self, Any
+try:
+    from typing import Self, Any
+except ImportError:
+    from typing_extensions import Self, Any
 
 from quart import Websocket, json
 
@@ -79,6 +82,7 @@ class PluginService:
     def add_handler(self, handler: Handler):
         self.handlers.append(handler)
 
+    # noinspection PyTypeChecker
     async def raise_event(self, event: UpEvent):
         tasks = []
 

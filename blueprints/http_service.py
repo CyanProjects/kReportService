@@ -6,7 +6,6 @@ from json import JSONDecodeError
 from quart import Blueprint, request
 from quart import json
 
-from log import logger
 from service.manager import PluginService
 from service.structures import ReportEvent, JavascriptError, ResponseHelper, ReportLevel
 
