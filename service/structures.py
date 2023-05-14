@@ -2,6 +2,7 @@ import asyncio
 import collections
 import datetime
 import enum
+import typing
 import uuid as uuid
 from asyncio import Event
 from abc import ABC, abstractmethod
@@ -9,10 +10,26 @@ from dataclasses import dataclass, KW_ONLY, field
 from http import HTTPStatus
 from typing import TypedDict, Optional, Literal, Any
 
+try:
+    from typing import NotRequired, Required, _AnyMeta
+except ImportError:
+    from typing_extensions import NotRequired, Required, _AnyMeta
+
+typing.NotRequired, typing.Required, typing._AnyMeta = NotRequired, Required, _AnyMeta
+
 from strongtyping.strong_typing import match_class_typing
 from quart import json, Response
 
 StrSetArrayType = list[str] | tuple[str] | set[str]
+
+
+class MyStrEnum(str, enum.Enum):
+    def __repr__(self):
+        return self.value
+
+
+if not hasattr(enum, 'StrEnum'):
+    enum.StrEnum = MyStrEnum
 
 
 class ValuedEvent(Event):

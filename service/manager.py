@@ -6,9 +6,9 @@ import pickle
 import uuid
 from dataclasses import asdict, is_dataclass
 try:
-    from typing import Self, Any
+    from typing import Self, Any, NotRequired, Required
 except ImportError:
-    from typing_extensions import Self, Any
+    from typing_extensions import Self, Any, NotRequired, Required
 
 from quart import Websocket, json
 

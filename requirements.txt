@@ -2,3 +2,4 @@ EverLoguru~=1.1.6
 loguru~=0.7.0
 strongtyping~=3.11.1
 quart~=0.18.4
+typing_extensions
