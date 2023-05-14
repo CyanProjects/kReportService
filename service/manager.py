@@ -7,10 +7,26 @@ import uuid
 from dataclasses import asdict, is_dataclass
 from typing import Self, Any
 
-from quart import Websocket
+from quart import Websocket, json
 
 from log import logger
-from .structures import Handler, StatusEvent, BroadcastEvent, DownEvent, event_mapping, UpEvent, ValuedEvent
+from .structures import Handler, StatusEvent, BroadcastEvent, DownEvent, event_mapping, UpEvent, ValuedEvent, \
+    ReportHandler, ReportEvent
+
+
+class FileReportHandler(ReportHandler):
+    async def emit(self, report: ReportEvent):
+        path = pathlib.Path(f'./{report.sid}_report.json')
+        if not path.is_file():
+            with path.open('w') as fp:
+                fp.write('[]')
+        with path.open('r', encoding='u8') as frp:
+            tmp = json.load(frp)
+            with path.open('w', encoding='u8') as fwp:
+                tmp.append(
+                    asdict(report)
+                )
+                json.dump(tmp, fwp, ensure_ascii=False)
 
 
 class PluginService:
@@ -55,7 +71,7 @@ class PluginService:
         self.create_date = datetime.datetime.utcnow()
         self.name = name
         if handlers:
-            handlers = []
+            handlers = [FileReportHandler()]
         self.handlers = handlers
         self.pending_event: ValuedEvent = ValuedEvent()
         self.__class__.services[sid] = self
@@ -87,7 +103,7 @@ class PluginService:
             event_data = await websocket.receive_json()
             event_type = event_data['type']
             event_data.pop('type')
-            event = event_mapping[event_type](**event_data)
+            event = event_mapping[event_type](sid=self.sid, **event_data)
 
             await self.raise_event(event)
 
@@ -133,7 +149,6 @@ class PluginService:
             logger.debug("Services to save: {services}", services=cls.services)
             pickle.dump(cls.services, fp)
 
-
     @classmethod
     def register(cls, name: str, handlers=None) -> Self:
         if handlers is None:
@@ -146,13 +161,13 @@ class PluginService:
 
 def __getstate__(self):
     instance_dict = copy.copy(self.__dict__)
-    instance_dict['pending_events'] = None
+    instance_dict['pending_event'] = None
     return instance_dict
 
 
 def __setstate__(self, state: dict[str, Any]):
-    if 'pending_events' in state:
-        state['pending_events'] = asyncio.Queue(maxsize=self.max_pending_size)
+    if 'pending_event' in state:
+        state['pending_event'] = ValuedEvent()
     for key in state:
         self.__dict__[key] = state[key]
     return state

@@ -35,6 +35,7 @@ async def report(sid: uuid.UUID):
 
     try:
         await PluginService(sid).raise_event(ReportEvent(
+            sid=sid,
             level=level, timestamp=timestamp, description=description,
             info=info, error=JavascriptError(**error), log=log
         ))

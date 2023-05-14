@@ -142,6 +142,7 @@ class BaseEvent:
 
 @dataclass
 class UpEvent(BaseEvent):
+    sid: uuid.UUID
     type: UpEventType | GeneralEventType
 
 
