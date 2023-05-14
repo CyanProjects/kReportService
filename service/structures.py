@@ -1,12 +1,56 @@
+import asyncio
+import collections
 import datetime
 import enum
-from abc import ABC, abstractmethod
-from dataclasses import dataclass, KW_ONLY, field, InitVar
-from typing import TypedDict, Optional
-
 import uuid as uuid
+from asyncio import Event
+from abc import ABC, abstractmethod
+from dataclasses import dataclass, KW_ONLY, field
+from http import HTTPStatus
+from typing import TypedDict, Optional, Literal, Any
+
+from strongtyping.strong_typing import match_class_typing
+from quart import json, Response
 
 StrSetArrayType = list[str] | tuple[str] | set[str]
+
+
+class ValuedEvent(Event):
+    def __init__(self):
+        super().__init__()
+        self._waiters = collections.deque()
+        self._value = None
+
+    def set_with_value(self, value: Any):
+        if not self._value:
+            self._value = value
+
+            for fut in self._waiters:
+                if not fut.done():
+                    fut.set_result(value)
+
+    def clear(self):
+        """Reset the internal flag to false. Subsequently, coroutines calling
+        wait() will block until set() is called to set the internal flag
+        to true again."""
+        self._value = None
+
+    async def wait(self) -> Any:
+        """Block until the internal flag is true.
+
+        If the internal flag is true on entry, return True
+        immediately.  Otherwise, block until another coroutine calls
+        set() to set the flag to true, then return True.
+        """
+        if self._value:
+            return self._value
+
+        fut = asyncio.get_event_loop().create_future()
+        self._waiters.append(fut)
+        try:
+            return await fut
+        finally:
+            self._waiters.remove(fut)
 
 
 class PackageInfo(TypedDict, total=False):
@@ -44,22 +88,47 @@ class PluginInfo(PluginInfoBasic):
             self.sid = uuid.UUID(self.sid)
 
 
-class EventType(enum.StrEnum):
+class GeneralEventType(enum.StrEnum):
     notice = 'notice'
     status = 'status'
-    required = 'required'
-    report = 'report'
     message = 'message'
+    other = 'other'
+
+
+class UpEventType(enum.StrEnum):
+    # # General Event
+    # notice = 'notice'
+    # status = 'status'
+    # message = 'message'
+
+    # Up Events
+    required = 'required'
+    fetch = 'fetch'
+    report = 'report'
+
+
+class DownEventType(enum.StrEnum):
+    # # General Event
+    # notice = 'notice'
+    # status = 'status'
+    # message = 'message'
+
+    # Down Events
+    broadcast = 'broadcast'
+    alert = 'alert'
+    hmr = 'hmr'  # may not be able to use because of the koishi policy
+    execute = 'execute'  # may not be able to use because of the koishi policy
 
 
 class ReportLevel(enum.StrEnum):
     info = 'info'
     warn = 'warn'
-    error = 'error'
     fails = 'fails'
+    error = 'error'
     crash = 'crash'
 
 
+@match_class_typing
 class JavascriptError(TypedDict):
     name: str
     message: str
@@ -68,7 +137,38 @@ class JavascriptError(TypedDict):
 
 @dataclass
 class BaseEvent:
-    type: EventType
+    type: GeneralEventType
+
+
+@dataclass
+class UpEvent(BaseEvent):
+    type: UpEventType | GeneralEventType
+
+
+@dataclass
+class DownEvent(BaseEvent):
+    type: DownEventType | GeneralEventType
+
+
+@dataclass
+class StatusEvent(DownEvent):
+    type: Literal[GeneralEventType.status] = field(init=False)
+    sid: str
+    name: str
+    message: Optional[str] = None
+
+    def __post_init__(self):
+        self.type = GeneralEventType.status
+
+
+@dataclass
+class BroadcastEvent(DownEvent):
+    type: Literal[DownEventType.broadcast] = field(init=False)
+    message: str
+    highlight: bool = False
+
+    def __post_init__(self):
+        self.type = DownEventType.broadcast
 
 
 @dataclass
@@ -87,38 +187,38 @@ class MessageEvent(BaseEvent):
     :var message: the message to bring
     """
     message: str
+    type: Literal[GeneralEventType.message] = field(init=False)
+
+    def __post_init__(self):
+        self.type = GeneralEventType.message
 
 
 @dataclass
-class ReportEvent(BaseEvent):
+class ReportEvent(UpEvent):
+    type: Literal[UpEventType.report] = field(init=False)
     level: ReportLevel
-    timestamp: int | float | datetime.datetime
     description: str
+    timestamp: int | float | datetime.datetime = datetime.datetime.utcnow()
     info: Optional[str] = None
     error: Optional[JavascriptError] = None
 
     def __post_init__(self):
+        self.type = UpEventType.report
         if not isinstance(self.timestamp, datetime.datetime):
             self.timestamp = datetime.datetime.fromtimestamp(self.timestamp, tz=datetime.UTC)
 
 
-@dataclass
-class Message:
-    messageType: str
-    data: dict
-
-
-@dataclass
-class DownMessage(Message):
-    pass
-
-
-@dataclass
-class UpMessage(Message):
-    pass
+event_mapping = {
+    UpEventType.report: ReportEvent,
+    GeneralEventType.message: MessageEvent,
+    GeneralEventType.status: StatusEvent,
+    DownEventType.broadcast: BroadcastEvent,
+}
 
 
 class Handler(ABC):
+    type = 'default'
+
     @abstractmethod
-    async def emit(self, report: ReportEvent):
+    async def emit(self, report: UpEvent):
         pass

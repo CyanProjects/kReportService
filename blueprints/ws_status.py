@@ -1,12 +1,11 @@
+import asyncio
 import uuid
 from dataclasses import asdict
 
 from quart import Blueprint, websocket
 
 from log import logger
-
 from service.manager import PluginService
-
 from service.structures import PluginInfo
 
 Bp = Blueprint('ws:status', __name__, url_prefix='/ws/status')
@@ -25,9 +24,11 @@ async def connection():
             return
     else:
         await websocket.close(1008, 'Bad PluginInfo')
-    await websocket.send_json(asdict(client_info))
 
-    service = PluginService(client_info.name, sid=client_info.sid)
-    client_info.sid = service.sid
+    service = PluginService(client_info.sid)
+    client_info.sid = service.sid  # sync sid
 
-    await service.receive(websocket)
+    sender = asyncio.create_task(service.send(websocket))
+    receiver = asyncio.create_task(service.receive(websocket))
+
+    await asyncio.gather(sender, receiver)
