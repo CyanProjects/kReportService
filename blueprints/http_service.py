@@ -16,7 +16,10 @@ Bp = Blueprint('http:service', __name__, url_prefix='/api')
 async def report(sid: uuid.UUID):
     data = await request.data
     try:
-        data_json = json.loads(data.decode())
+        if data:
+            data_json = json.loads(data.decode())
+        else:
+            data_json = request.args
     except JSONDecodeError:
         return ResponseHelper.gen_kw(code=400, msg='Invalid data.', _status=HTTPStatus.BAD_REQUEST)
     cid = data_json.get('cid', uuid.uuid4())
