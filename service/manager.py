@@ -160,7 +160,7 @@ class PluginService:
         self.create_date = datetime.datetime.utcnow()
         self.name = name
         self.plugin_info = PluginInfo(self.sid, self.name)
-        if handlers:
+        if not handlers:
             handlers = [FileReportHandler()]
         self.handlers: list[Handler] = handlers
         self.clients: dict[uuid.UUID, ServiceClient] = {}
