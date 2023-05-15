@@ -34,8 +34,8 @@ async def report(sid: uuid.UUID):
         if isinstance(error, str):
             error = json.loads(error)
         if not isinstance(error, dict) or error is None:
-            raise JSONDecodeError
-    except JSONDecodeError:
+            raise TypeError
+    except (JSONDecodeError, TypeError):
         return ResponseHelper.gen_kw(code=400, msg="'error' must be json serializable", _status=HTTPStatus.BAD_REQUEST)
 
     if not (level or timestamp or description) or not (info or error):
