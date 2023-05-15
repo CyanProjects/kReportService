@@ -219,11 +219,12 @@ class PluginService:
             pickle.dump(cls.services, fp)
 
     @classmethod
-    def register(cls, name: str, handlers=None) -> Self:
+    def register(cls, name: str, sid: uuid.UUID = None, handlers=None) -> Self:
         if handlers is None:
             handlers = []
-
-        service = PluginService(uuid.uuid4(), name, handlers=handlers)
+        if not sid:
+            sid = uuid.uuid4()
+        service = PluginService(sid, name, handlers=handlers)
         cls.save()
         return service
 
