@@ -4,17 +4,21 @@ import datetime
 import pathlib
 import pickle
 import uuid
+from asyncio import CancelledError
 from dataclasses import asdict, is_dataclass
+
+from typing import Any, Optional
+
 try:
-    from typing import Self, Any, NotRequired, Required
+    from typing import Self, NotRequired, Required
 except ImportError:
-    from typing_extensions import Self, Any, NotRequired, Required
+    from typing_extensions import Self, NotRequired, Required
 
 from quart import Websocket, json
 
 from log import logger
-from .structures import Handler, StatusEvent, BroadcastEvent, DownEvent, event_mapping, UpEvent, ValuedEvent, \
-    ReportHandler, ReportEvent
+from .structures import Handler, StatusEvent, BroadcastEvent, DownEvent, event_mapping, UpEvent, \
+    ReportHandler, ReportEvent, DisconnectEvent, ClientInfo, PluginInfo
 
 
 class FileReportHandler(ReportHandler):
@@ -30,6 +34,83 @@ class FileReportHandler(ReportHandler):
                     asdict(report)
                 )
                 json.dump(tmp, fwp, ensure_ascii=False)
+
+
+class ServiceClient:
+    def __init__(self, cid: uuid.UUID, parent: "PluginService" = None, client_info: ClientInfo = None, queue_max=50):
+        self.cid = cid
+        self.parent_plugin: Optional["PluginService"] = parent
+        if not client_info:
+            client_info = ClientInfo(**asdict(self.parent_plugin.plugin_info))
+        (client_info.name, client_info.sid) = \
+            self.parent_plugin.plugin_info.name, self.parent_plugin.plugin_info.sid
+        self.client_info = client_info
+        self.count = 0
+        self.up_pending_event: asyncio.Queue[UpEvent] = asyncio.Queue(queue_max)
+        self.down_pending_event: asyncio.Queue[DownEvent] = asyncio.Queue(queue_max)
+        self.blocker: Optional[asyncio.Barrier] = None
+
+    async def event_receive(self):
+        while True:
+            event = await self.up_pending_event.get()
+            await self.parent_plugin.raise_event(event)
+
+    def add_processor(self):
+        self.count += 1
+
+    async def process(self, websocket: Websocket):
+        tasks = (
+            asyncio.create_task(self.send(websocket)),
+            asyncio.create_task(self.receive(websocket)),
+            asyncio.create_task(self.event_receive())
+        )
+
+        await asyncio.gather(*tasks)
+
+    async def close(self):
+        await self.down_pending_event.put(DisconnectEvent())
+        self.blocker = asyncio.Barrier(self.count + 1)
+        await self.blocker.wait()
+        self.parent_plugin.clients.pop(self.cid)
+
+    async def receive(self, websocket: Websocket):
+        self.add_processor()
+        await websocket.send_json(asdict(
+            StatusEvent(
+                sid=str(self.client_info.sid),
+                cid=str(self.cid),
+                name=str(self.client_info.name),
+                message="Connected to server"
+            )
+        ))
+
+        try:
+            while True:
+                if self.blocker is not None:
+                    await self.blocker.wait()
+                    return
+                event_data: dict = await websocket.receive_json()
+                event_type = event_data['type']
+                event_data.pop('type')
+                event_data.setdefault('cid', self.cid)
+                event = event_mapping[event_type](sid=self.parent_plugin.sid, **event_data)
+
+                await self.up_pending_event.put(event)
+        except CancelledError:
+            await self.close()
+            if self.blocker is not None:
+                await self.blocker.wait()
+            raise
+
+    async def send(self, websocket: Websocket):
+        self.add_processor()
+        while True:
+            event: DownEvent = await self.down_pending_event.get()
+            if isinstance(event, DisconnectEvent):
+                await self.blocker.wait()
+                return
+            if isinstance(event, DownEvent) and is_dataclass(event):
+                await websocket.send_json(asdict(event))
 
 
 class PluginService:
@@ -63,20 +144,26 @@ class PluginService:
         else:
             raise KeyError("Cannot find PluginService for this plugin")
 
+    def add_client(self, cid: uuid.UUID = None, client_info: ClientInfo = None, queue_max=50):
+        if not cid:
+            cid = uuid.uuid4()
+        self.clients[cid] = ServiceClient(cid, self, client_info, queue_max)
+        return self.clients[cid]
+
     def __init__(self, sid: uuid.UUID, name: str = None, handlers: list[Handler] = None):
         if not sid:
             raise TypeError(f'Invalid {self.__class__}')
         if self._inited:
             return
-
         self._inited = True
         self._sid = sid
         self.create_date = datetime.datetime.utcnow()
         self.name = name
+        self.plugin_info = PluginInfo(self.sid, self.name)
         if handlers:
             handlers = [FileReportHandler()]
-        self.handlers = handlers
-        self.pending_event: ValuedEvent = ValuedEvent()
+        self.handlers: list[Handler] = handlers
+        self.clients: dict[uuid.UUID, ServiceClient] = {}
         self.__class__.services[sid] = self
 
     def add_handler(self, handler: Handler):
@@ -94,34 +181,12 @@ class PluginService:
 
         await asyncio.gather(*tasks)
 
-    async def receive(self, websocket: Websocket):
-        await websocket.send_json(asdict(
-            StatusEvent(
-                sid=str(self.sid),
-                name=str(self.name),
-                message="Connected to server"
-            )
-        ))
-
-        while True:
-            event_data = await websocket.receive_json()
-            event_type = event_data['type']
-            event_data.pop('type')
-            event = event_mapping[event_type](sid=self.sid, **event_data)
-
-            await self.raise_event(event)
-
-    async def send(self, websocket: Websocket):
-        while True:
-            event: DownEvent = await self.pending_event.wait()
-            if isinstance(event, DownEvent) and is_dataclass(event):
-                await websocket.send_json(asdict(event))
-
     async def broadcast(self, message: str, **kwargs):
-        self.pending_event.set_with_value(BroadcastEvent(
-            message=message,
-            **kwargs
-        ))
+        for cid in self.clients:
+            await self.clients[cid].down_pending_event.put(BroadcastEvent(
+                message=message,
+                **kwargs
+            ))
 
     @property
     def sid(self):
@@ -162,19 +227,15 @@ class PluginService:
         cls.save()
         return service
 
+    def __getstate__(self):
+        instance_dict = copy.copy(self.__dict__)
+        instance_dict['clients'] = {}
+        return instance_dict
 
-def __getstate__(self):
-    instance_dict = copy.copy(self.__dict__)
-    instance_dict['pending_event'] = None
-    return instance_dict
-
-
-def __setstate__(self, state: dict[str, Any]):
-    if 'pending_event' in state:
-        state['pending_event'] = ValuedEvent()
-    for key in state:
-        self.__dict__[key] = state[key]
-    return state
+    def __setstate__(self, state: dict[str, Any]):
+        for key in state:
+            self.__dict__[key] = state[key]
+        return state
 
 
 if not PluginService.services:

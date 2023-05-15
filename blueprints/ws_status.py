@@ -5,18 +5,18 @@ from quart import Blueprint, websocket
 
 from log import logger
 from service.manager import PluginService
-from service.structures import PluginInfo
+from service.structures import ClientInfo
 
 Bp = Blueprint('ws:status', __name__, url_prefix='/ws/status')
 
 
 @Bp.websocket('/')
 async def connection():
-    client_info = PluginInfo(sid=uuid.UUID('00000000-0000-0000-0000-000000000000'), name='plugin', version='0.0.1')
+    client_info = ClientInfo(sid=uuid.UUID('00000000-0000-0000-0000-000000000000'), name='plugin', version='0.0.1')
     data = (await websocket.receive_json())
     if isinstance(data, dict):
         try:
-            client_info = PluginInfo(**data)
+            client_info = ClientInfo(**data)
         except TypeError as e:
             logger.debug("Bad PluginInfo: {e}", e=e)
             await websocket.close(1008, 'Bad PluginInfo')
@@ -27,7 +27,4 @@ async def connection():
     service = PluginService(client_info.sid)
     client_info.sid = service.sid  # sync sid
 
-    sender = asyncio.create_task(service.send(websocket))
-    receiver = asyncio.create_task(service.receive(websocket))
-
-    await asyncio.gather(sender, receiver)
+    await service.add_client().process(websocket)

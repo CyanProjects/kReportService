@@ -19,6 +19,7 @@ async def report(sid: uuid.UUID):
         data_json = json.loads(data.decode())
     except JSONDecodeError:
         return ResponseHelper.gen_kw(code=400, msg='Invalid data.', _status=HTTPStatus.BAD_REQUEST)
+    cid = data_json.get('cid', uuid.uuid4())
     level = ReportLevel[data_json.get('level')]
     timestamp = data_json.get('timestamp', datetime.datetime.utcnow())
     description = data_json.get('description')
@@ -34,6 +35,7 @@ async def report(sid: uuid.UUID):
 
     try:
         await PluginService(sid).raise_event(ReportEvent(
+            cid=cid,
             sid=sid,
             level=level, timestamp=timestamp, description=description,
             info=info, error=JavascriptError(**error), log=log
@@ -44,9 +46,9 @@ async def report(sid: uuid.UUID):
     return ResponseHelper.gen_kw(msg='Report successfully')
 
 
-@Bp.route('/register/<name>', methods=['PUT', 'POST'])
+@Bp.route('/register/<name>', methods=['POST'])
 async def register(name: str):
-    return str(PluginService.register(name).sid)
+    return ResponseHelper.gen_kw(data=str(PluginService.register(name).sid))
 
 
 @Bp.route('/broadcast/<uuid:sid>', methods=['POST'])

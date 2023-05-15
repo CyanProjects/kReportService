@@ -9,14 +9,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, KW_ONLY, field
 from http import HTTPStatus
 from typing import TypedDict, Optional, Literal, Any
-
-try:
-    from typing import NotRequired, Required, _AnyMeta
-except ImportError:
-    from typing_extensions import NotRequired, Required, _AnyMeta
-
-typing.NotRequired, typing.Required, typing._AnyMeta = NotRequired, Required, _AnyMeta
-
+import fix_strongtyping
 from strongtyping.strong_typing import match_class_typing
 from quart import json, Response
 
@@ -32,44 +25,6 @@ if not hasattr(enum, 'StrEnum'):
     enum.StrEnum = MyStrEnum
 
 
-class ValuedEvent(Event):
-    def __init__(self):
-        super().__init__()
-        self._waiters = collections.deque()
-        self._value = None
-
-    def set_with_value(self, value: Any):
-        if not self._value:
-            self._value = value
-
-            for fut in self._waiters:
-                if not fut.done():
-                    fut.set_result(value)
-
-    def clear(self):
-        """Reset the internal flag to false. Subsequently, coroutines calling
-        wait() will block until set() is called to set the internal flag
-        to true again."""
-        self._value = None
-
-    async def wait(self) -> Any:
-        """Block until the internal flag is true.
-
-        If the internal flag is true on entry, return True
-        immediately.  Otherwise, block until another coroutine calls
-        set() to set the flag to true, then return True.
-        """
-        if self._value:
-            return self._value
-
-        fut = asyncio.get_event_loop().create_future()
-        self._waiters.append(fut)
-        try:
-            return await fut
-        finally:
-            self._waiters.remove(fut)
-
-
 class PackageInfo(TypedDict, total=False):
     name: str
     description: str
@@ -82,19 +37,18 @@ class PackageInfo(TypedDict, total=False):
     peerDependencies: StrSetArrayType
 
 
-class PluginInfoBasic:
+@dataclass
+class PluginInfo:
     sid: Optional[uuid.UUID | str] = None
     name: Optional[str] = None
 
-    def __init__(self):
+    def __post_init__(self):
         if not (self.name or self.sid):
-            raise TypeError(f'Invalid {PluginInfoBasic}')
+            raise TypeError(f'Invalid {PluginInfo}')
 
 
 @dataclass
-class PluginInfo(PluginInfoBasic):
-    sid: Optional[uuid.UUID | str] = None
-    name: Optional[str] = None
+class ClientInfo(PluginInfo):
     version: Optional[str] = None
     _ = KW_ONLY
     description: Optional[str] = ''
@@ -137,6 +91,11 @@ class DownEventType(enum.StrEnum):
     execute = 'execute'  # may not be able to use because of the koishi policy
 
 
+class SpecialEventType(enum.StrEnum):
+    closed = 'closed'
+    disconnect = 'closed'
+
+
 class ReportLevel(enum.StrEnum):
     info = 'info'
     warn = 'warn'
@@ -160,6 +119,7 @@ class BaseEvent:
 @dataclass
 class UpEvent(BaseEvent):
     sid: uuid.UUID
+    cid: Optional[uuid.UUID]
     type: UpEventType | GeneralEventType
 
 
@@ -169,10 +129,24 @@ class DownEvent(BaseEvent):
 
 
 @dataclass
+class SpecialEvent(DownEvent):
+    type: SpecialEventType
+
+
+@dataclass
+class DisconnectEvent(SpecialEvent):
+    type: Literal[SpecialEventType.disconnect] = field(init=False)
+
+    def __post_init__(self):
+        self.type = SpecialEventType.disconnect
+
+
+@dataclass
 class StatusEvent(DownEvent):
     type: Literal[GeneralEventType.status] = field(init=False)
     sid: str
     name: str
+    cid: Optional[str] = None
     message: Optional[str] = None
 
     def __post_init__(self):
