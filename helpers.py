@@ -50,7 +50,8 @@ class LocatePluginTypeConvertor(BaseConverter):
 class LocatePluginConvertor(BaseConverter):
     regex = (
         r"(sid\/([A-Fa-f0-9]{8}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{12}))|"
-        r"(name\/[a-zA-Z][a-zA-Z0-9\-]{0,30})"
+        r"(name\/[a-zA-Z][a-zA-Z0-9\-]{0,30})|"
+        r"([A-Fa-f0-9]{8}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{12})"
     )
 
     def __init__(self, map: Map, *args: Any, **kwargs: Any):
@@ -63,6 +64,8 @@ class LocatePluginConvertor(BaseConverter):
             sid = uuid.UUID(value.removeprefix('sid/'))
         elif value.startswith('name/'):
             name = str(value.removeprefix('name/'))
+        elif all(map(lambda s: s.lower() in 'abcdef0123456789-', value)):
+            sid = uuid.UUID(value)
         else:
             raise ValidationError()
         return PluginService(sid, name)
