@@ -6,13 +6,7 @@ import pickle
 import uuid
 from asyncio import CancelledError
 from dataclasses import asdict, is_dataclass
-
-from typing import Any, Optional
-
-try:
-    from typing import Self, NotRequired, Required
-except ImportError:
-    from typing_extensions import Self, NotRequired, Required
+from typing import Any, Optional, Self
 
 from quart import Websocket, json
 
@@ -120,7 +114,7 @@ class PluginService:
     max_pending_size = 50
 
     def __new__(cls, sid: uuid.UUID = None, _sid: uuid.UUID = None, name: str = None,
-                handlers: list[Handler] = None, _inited=False):
+                handlers: list[Handler] = None, _inited=False, create=False):
         if not sid and _sid:
             sid = _sid
         if _inited:
@@ -138,8 +132,9 @@ class PluginService:
                 return obj
         import inspect
         frame = inspect.currentframe()
-        if frame and frame.f_back.f_code.co_filename == frame.f_code.co_filename:
+        if create or (frame and frame.f_back.f_code.co_filename == frame.f_code.co_filename):
             obj = object.__new__(cls)
+            obj._sid = sid or uuid.uuid4()
             return obj
         else:
             raise KeyError("Cannot find PluginService for this plugin")
@@ -150,10 +145,10 @@ class PluginService:
         self.clients[cid] = ServiceClient(cid, self, client_info, queue_max)
         return self.clients[cid]
 
-    def __init__(self, sid: uuid.UUID, name: str = None, handlers: list[Handler] = None):
-        if not sid:
+    def __init__(self, sid: uuid.UUID = None, name: str = None, handlers: list[Handler] = None):
+        if not (sid or hasattr(self, "sid")):
             raise TypeError(f'Invalid {self.__class__}')
-        if self._inited:
+        if hasattr(self, "_inited") and self._inited:
             return
         self._inited = True
         self._sid = sid
@@ -219,12 +214,20 @@ class PluginService:
             pickle.dump(cls.services, fp)
 
     @classmethod
-    def register(cls, name: str, sid: uuid.UUID = None, handlers=None) -> Self:
+    def register_with_name(cls, name: str = None, sid: uuid.UUID = None, handlers=None) -> Self:
+        if handlers is None:
+            handlers = []
+        service = PluginService(name=name, sid=sid, handlers=handlers)
+        cls.save()
+        return service
+
+    @classmethod
+    def register(cls, sid: uuid.UUID = None, name: str = None, handlers=None) -> Self:
         if handlers is None:
             handlers = []
         if not sid:
             sid = uuid.uuid4()
-        service = PluginService(sid, name, handlers=handlers)
+        service = PluginService(name=name, sid=sid, handlers=handlers)
         cls.save()
         return service
 

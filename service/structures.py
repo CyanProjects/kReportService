@@ -1,17 +1,11 @@
-import asyncio
-import collections
 import datetime
 import enum
-import typing
 import uuid as uuid
-from asyncio import Event
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, KW_ONLY, field
-from http import HTTPStatus
-from typing import TypedDict, Optional, Literal, Any
-import fix_strongtyping
+from typing import TypedDict, Optional, Literal
+
 from strongtyping.strong_typing import match_class_typing
-from quart import json, Response
 
 StrSetArrayType = list[str] | tuple[str] | set[str]
 
@@ -233,25 +227,6 @@ class NoticeHandler(Handler, ABC):
         pass
 
 
-class ResponseHelper:
-    template = {
-        'code': 200,
-        'msg': None,
-        'data': None
-    }
-
-    @classmethod
-    def gen_json_str(cls, dictionary: dict):
-        template_dict = cls.template
-        template_dict.update(dictionary)
-        return json.dumps(template_dict, ensure_ascii=False)
-
-    @classmethod
-    def gen_json_response(cls, dictionary: dict, _status: HTTPStatus = HTTPStatus.OK):
-        return Response(cls.gen_json_str(dictionary), status=_status)
-
-    @classmethod
-    def gen_kw_json_response(cls, _status: HTTPStatus = HTTPStatus.OK, **kwargs):
-        return cls.gen_json_response(kwargs, _status=_status)
-
-    gen_kw = gen_kw_json_response
+class LocateType(enum.StrEnum):
+    sid = 'sid'
+    name = 'name'

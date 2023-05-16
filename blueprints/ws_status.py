@@ -1,4 +1,3 @@
-import asyncio
 import uuid
 
 from quart import Blueprint, websocket

@@ -7,13 +7,14 @@ from quart import Blueprint, request
 from quart import json
 
 from service.manager import PluginService
-from service.structures import ReportEvent, JavascriptError, ResponseHelper, ReportLevel
+from service.structures import ReportEvent, JavascriptError, ReportLevel
+from helpers import ResponseHelper
 
 Bp = Blueprint('http:service', __name__, url_prefix='/api')
 
 
-@Bp.route('/report/<uuid:sid>', methods=['POST'])
-async def report(sid: uuid.UUID):
+@Bp.route('/report/<plugin:plugin>', methods=['POST'])
+async def report(plugin: PluginService):
     data = await request.data
     try:
         if data:
@@ -33,7 +34,7 @@ async def report(sid: uuid.UUID):
     try:
         if isinstance(error, str):
             error = json.loads(error)
-        if not isinstance(error, dict) or error is None:
+        if not (isinstance(error, dict) and (info or error)):
             raise TypeError
     except (JSONDecodeError, TypeError):
         return ResponseHelper.gen_kw(code=400, msg="'error' must be json serializable", _status=HTTPStatus.BAD_REQUEST)
@@ -42,9 +43,9 @@ async def report(sid: uuid.UUID):
         return ResponseHelper.gen_kw(code=400, msg="Missing required params", _status=HTTPStatus.BAD_REQUEST)
 
     try:
-        await PluginService(sid).raise_event(ReportEvent(
+        await plugin.raise_event(ReportEvent(
             cid=cid,
-            sid=sid,
+            sid=plugin.sid,
             level=level, timestamp=timestamp, description=description,
             info=info, error=JavascriptError(**error), log=log
         ))
@@ -54,18 +55,23 @@ async def report(sid: uuid.UUID):
     return ResponseHelper.gen_kw(msg='Report successfully')
 
 
-@Bp.route('/register/<name>', methods=['POST'])
-async def register(name: str):
-    return ResponseHelper.gen_kw(data=str(PluginService.register(name).sid))
+@Bp.route('/plugin/name/<string:name>', methods=['PUT', 'POST'])
+async def register_with_name(name: str):
+    return ResponseHelper.gen_kw(data=str(PluginService.register_with_name(name).sid))
 
 
-@Bp.route('/broadcast/<uuid:sid>', methods=['POST'])
-async def broadcast(sid: uuid.UUID):
-    await PluginService(sid=sid).broadcast('test')
-    return ResponseHelper.gen_kw(_status=HTTPStatus.ACCEPTED)
+@Bp.route('/plugin/<plugin:plugin>', methods=['GET'])
+async def fetch(plugin: PluginService):
+    return ResponseHelper.gen_kw(data=plugin.plugin_info)
+
+
+@Bp.route('/broadcast/<plugin:plugin>', methods=['POST'])
+async def broadcast(plugin: PluginService):
+    await plugin.broadcast(str(request.args.get('message', None)))
+    return ResponseHelper.gen_kw(_status=HTTPStatus.NO_CONTENT)
 
 
 @Bp.route('/_save', methods=['POST'])
 async def save():
     PluginService.save()
-    return ResponseHelper.gen_kw(msg='pending', _status=HTTPStatus.CREATED)
+    return ResponseHelper.gen_kw(_status=HTTPStatus.OK)

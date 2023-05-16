@@ -1,7 +1,7 @@
+from create_app import create_app
 from blueprints.http_service import Bp as HTTPService
 from blueprints.legacy import Bp as LegacyAPI
 from blueprints.ws_status import Bp as ServiceWS
-from create_app import create_app
 
 app = create_app()
 
