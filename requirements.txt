@@ -4,3 +4,4 @@ strongtyping~=3.11.1
 quart~=0.18.4
 typing_extensions
 Werkzeug~=2.3.4
+hypercorn~=0.14.3
