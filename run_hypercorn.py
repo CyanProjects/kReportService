@@ -20,6 +20,7 @@ shutdown_event = asyncio.Event()
 def _signal_handler(*_: Any) -> None:
     shutdown_event.set()
 
+
 loop = asyncio.new_event_loop()
 asyncio.set_event_loop(loop)
 loop.add_signal_handler(signal.SIGINT, _signal_handler)
