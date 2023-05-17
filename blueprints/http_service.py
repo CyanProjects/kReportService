@@ -39,18 +39,15 @@ async def report(plugin: PluginService):
     except (JSONDecodeError, TypeError):
         return ResponseHelper.gen_kw(code=400, msg="'error' must be json serializable", _status=HTTPStatus.BAD_REQUEST)
 
-    if not (level or timestamp or description) or not (info or error):
+    if not ((level or timestamp or description) and (info or error)):
         return ResponseHelper.gen_kw(code=400, msg="Missing required params", _status=HTTPStatus.BAD_REQUEST)
 
-    try:
-        await plugin.raise_event(ReportEvent(
-            cid=cid,
-            sid=plugin.sid,
-            level=level, timestamp=timestamp, description=description,
-            info=info, error=JavascriptError(**error), log=log
-        ))
-    except KeyError as e:
-        return ResponseHelper.gen_kw(code=400, msg=str(e), _status=HTTPStatus.BAD_REQUEST)
+    await plugin.raise_event(ReportEvent(
+        cid=cid,
+        sid=plugin.sid,
+        level=level, timestamp=timestamp, description=description,
+        info=info, error=JavascriptError(**error) if error else None, log=log
+    ))
 
     return ResponseHelper.gen_kw(msg='Report successfully')
 

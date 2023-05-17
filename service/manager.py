@@ -11,6 +11,7 @@ from typing import Any, Optional, Self
 from quart import Websocket, json
 
 from log import logger
+from .exceptions import PluginNotFoundError, InvalidPluginError
 from .structures import Handler, StatusEvent, BroadcastEvent, DownEvent, event_mapping, UpEvent, \
     ReportHandler, ReportEvent, DisconnectEvent, ClientInfo, PluginInfo
 
@@ -137,7 +138,8 @@ class PluginService:
             obj._sid = sid or uuid.uuid4()
             return obj
         else:
-            raise KeyError("Cannot find PluginService for this plugin")
+            raise PluginNotFoundError(f"Cannot find PluginService for "
+                                      f"{name if name else 'unknown'}({sid if sid else 'unknown sid'})")
 
     def add_client(self, cid: uuid.UUID = None, client_info: ClientInfo = None, queue_max=50):
         if not cid:
@@ -146,8 +148,8 @@ class PluginService:
         return self.clients[cid]
 
     def __init__(self, sid: uuid.UUID = None, name: str = None, handlers: list[Handler] = None):
-        if not (sid or hasattr(self, "sid")):
-            raise TypeError(f'Invalid {self.__class__}')
+        if not (sid or hasattr(self, "_sid")):
+            raise InvalidPluginError(f'Invalid {self.__class__}')
         if hasattr(self, "_inited") and self._inited:
             return
         self._inited = True

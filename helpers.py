@@ -6,6 +6,7 @@ from typing import Optional, Any
 from quart import json, Response
 from werkzeug.routing import BaseConverter, ValidationError, Map
 
+from service.exceptions import BasePluginError
 from service.manager import PluginService
 from service.structures import LocateType
 
@@ -54,9 +55,6 @@ class LocatePluginConvertor(BaseConverter):
         r"([A-Fa-f0-9]{8}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{12})"
     )
 
-    def __init__(self, map: Map, *args: Any, **kwargs: Any):
-        super().__init__(map)
-
     def to_python(self, value: str) -> PluginService:
         sid: Optional[uuid.UUID] = None
         name: Optional[str] = None
@@ -76,3 +74,10 @@ class LocatePluginConvertor(BaseConverter):
         elif isinstance(value, str):
             return f'name/{value}'
         raise ValidationError()
+
+
+def internal_error_handler(e: Exception):
+    if isinstance(e, BasePluginError):
+        return ResponseHelper.gen_kw(code=400, msg=str(e), _status=HTTPStatus.BAD_REQUEST)
+    else:
+        raise e
