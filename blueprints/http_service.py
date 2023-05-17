@@ -16,17 +16,17 @@ Bp = Blueprint('http:service', __name__, url_prefix='/api')
 s1 = Serializer('secret', 'access_tok', serializer=json)
 
 
-@Bp.route('/auth/<plugin:plugin>')
-async def auth(plugin: PluginService):
-    response = ResponseHelper.Response('OK')
-    old_access = request.cookies.get('access_token', None)
-    if old_access:
-        tokens: list = s1.loads(old_access)
-        tokens.append(plugin.sid)
-        response.set_cookie('access_token', s1.dumps(tokens))
-    else:
-        response.set_cookie('access_token', s1.dumps([plugin.sid]))
-    return response
+# @Bp.route('/auth/<plugin:plugin>')
+# async def auth(plugin: PluginService):
+#     response = ResponseHelper.Response('OK')
+#     old_access = request.cookies.get('access_token', None)
+#     if old_access:
+#         tokens: list = s1.loads(old_access)
+#         tokens.append(plugin.sid)
+#         response.set_cookie('access_token', s1.dumps(tokens))
+#     else:
+#         response.set_cookie('access_token', s1.dumps([plugin.sid]))
+#     return response
 
 
 @Bp.route('/report/<plugin:plugin>', methods=['POST'])
@@ -70,16 +70,13 @@ async def send_report(plugin: PluginService):
 
 @Bp.route('/report/<plugin:plugin>', methods=['GET'])
 async def get_report(plugin: PluginService):
-    access_cookie = request.cookies.get('access_token', [])
-    tokens = s1.loads(access_cookie)
-    if str(plugin.sid) not in tokens:
-        return ResponseHelper.gen_kw(code=400, msg='unauthorized access', _status=HTTPStatus.UNAUTHORIZED)
-    report_events = []
-    for event in plugin.events:
-        if event.type == UpEventType.report:
-            report_events.append(event)
-
-    return ResponseHelper.gen_kw(data=report_events)
+    return ResponseHelper.gen_kw(code=-1, _status=HTTPStatus.NOT_IMPLEMENTED)
+    # report_events = []
+    # for event in plugin.events:
+    #     if event.type == UpEventType.report:
+    #         report_events.append(event)
+    #
+    # return ResponseHelper.gen_kw(data=report_events)
 
 
 @Bp.route('/plugin/name/<string:name>', methods=['PUT', 'POST'])
