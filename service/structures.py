@@ -207,7 +207,7 @@ class Handler(ABC):
     type = 'default'
 
     @abstractmethod
-    async def emit(self, report: UpEvent):
+    async def emit(self, plugin: "PluginService", event: UpEvent):
         pass
 
 
@@ -215,7 +215,7 @@ class ReportHandler(Handler, ABC):
     type = UpEventType.report
 
     @abstractmethod
-    async def emit(self, report: ReportEvent):
+    async def emit(self, plugin: "PluginService", report: ReportEvent):
         pass
 
 
@@ -223,7 +223,7 @@ class NoticeHandler(Handler, ABC):
     type = GeneralEventType.notice
 
     @abstractmethod
-    async def emit(self, report: BaseEvent):
+    async def emit(self, plugin: "PluginService", event: BaseEvent):
         pass
 
 

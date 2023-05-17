@@ -2,19 +2,35 @@ import datetime
 import uuid
 from http import HTTPStatus
 from json import JSONDecodeError
+from itsdangerous.serializer import Serializer
 
 from quart import Blueprint, request
 from quart import json
 
 from service.manager import PluginService
-from service.structures import ReportEvent, JavascriptError, ReportLevel
+from service.structures import ReportEvent, JavascriptError, ReportLevel, UpEventType
 from helpers import ResponseHelper
 
 Bp = Blueprint('http:service', __name__, url_prefix='/api')
 
+s1 = Serializer('secret', 'access_tok', serializer=json)
+
+
+@Bp.route('/auth/<plugin:plugin>')
+async def auth(plugin: PluginService):
+    response = ResponseHelper.Response('OK')
+    old_access = request.cookies.get('access_token', None)
+    if old_access:
+        tokens: list = s1.loads(old_access)
+        tokens.append(plugin.sid)
+        response.set_cookie('access_token', s1.dumps(tokens))
+    else:
+        response.set_cookie('access_token', s1.dumps([plugin.sid]))
+    return response
+
 
 @Bp.route('/report/<plugin:plugin>', methods=['POST'])
-async def report(plugin: PluginService):
+async def send_report(plugin: PluginService):
     data = await request.data
     try:
         if data:
@@ -34,7 +50,7 @@ async def report(plugin: PluginService):
     try:
         if isinstance(error, str):
             error = json.loads(error)
-        if not (isinstance(error, dict) and (info or error)):
+        if not (isinstance(error, dict) or (info or error)):
             raise TypeError
     except (JSONDecodeError, TypeError):
         return ResponseHelper.gen_kw(code=400, msg="'error' must be json serializable", _status=HTTPStatus.BAD_REQUEST)
@@ -50,6 +66,20 @@ async def report(plugin: PluginService):
     ))
 
     return ResponseHelper.gen_kw(msg='Report successfully')
+
+
+@Bp.route('/report/<plugin:plugin>', methods=['GET'])
+async def get_report(plugin: PluginService):
+    access_cookie = request.cookies.get('access_token', [])
+    tokens = s1.loads(access_cookie)
+    if str(plugin.sid) not in tokens:
+        return ResponseHelper.gen_kw(code=400, msg='unauthorized access', _status=HTTPStatus.UNAUTHORIZED)
+    report_events = []
+    for event in plugin.events:
+        if event.type == UpEventType.report:
+            report_events.append(event)
+
+    return ResponseHelper.gen_kw(data=report_events)
 
 
 @Bp.route('/plugin/name/<string:name>', methods=['PUT', 'POST'])

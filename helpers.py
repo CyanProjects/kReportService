@@ -1,9 +1,10 @@
 import functools
 import uuid
 from http import HTTPStatus
-from typing import Optional, Any
+from typing import Optional, Any, AnyStr, Iterable
 
 from quart import json, Response
+from quart.wrappers.response import ResponseBody
 from werkzeug.routing import BaseConverter, ValidationError, Map
 
 from service.exceptions import BasePluginError
@@ -12,6 +13,8 @@ from service.structures import LocateType
 
 
 class ResponseHelper:
+    Response = Response
+
     @classmethod
     @functools.cache
     def gen_default(cls):

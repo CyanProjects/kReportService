@@ -17,7 +17,7 @@ from .structures import Handler, StatusEvent, BroadcastEvent, DownEvent, event_m
 
 
 class FileReportHandler(ReportHandler):
-    async def emit(self, report: ReportEvent):
+    async def emit(self, plugin: "PluginService", report: ReportEvent):
         path = pathlib.Path(f'./{report.sid}_report.json')
         if not path.is_file():
             with path.open('w') as fp:
@@ -114,8 +114,8 @@ class PluginService:
     services: dict[uuid.UUID, Self] = {}
     max_pending_size = 50
 
-    def __new__(cls, sid: uuid.UUID = None, _sid: uuid.UUID = None, name: str = None,
-                handlers: list[Handler] = None, _inited=False, create=False):
+    def __new__(cls, sid: uuid.UUID = None, name: str = None,
+                handlers: list[Handler] = None, _sid: uuid.UUID = None, _inited=False, create=False):
         if not sid and _sid:
             sid = _sid
         if _inited:
@@ -141,12 +141,6 @@ class PluginService:
             raise PluginNotFoundError(f"Cannot find PluginService for "
                                       f"{name if name else 'unknown'}({sid if sid else 'unknown sid'})")
 
-    def add_client(self, cid: uuid.UUID = None, client_info: ClientInfo = None, queue_max=50):
-        if not cid:
-            cid = uuid.uuid4()
-        self.clients[cid] = ServiceClient(cid, self, client_info, queue_max)
-        return self.clients[cid]
-
     def __init__(self, sid: uuid.UUID = None, name: str = None, handlers: list[Handler] = None):
         if not (sid or hasattr(self, "_sid")):
             raise InvalidPluginError(f'Invalid {self.__class__}')
@@ -162,6 +156,13 @@ class PluginService:
         self.handlers: list[Handler] = handlers
         self.clients: dict[uuid.UUID, ServiceClient] = {}
         self.__class__.services[sid] = self
+        self.events: list[UpEvent] = []
+
+    def add_client(self, cid: uuid.UUID = None, client_info: ClientInfo = None, queue_max=50):
+        if not cid:
+            cid = uuid.uuid4()
+        self.clients[cid] = ServiceClient(cid, self, client_info, queue_max)
+        return self.clients[cid]
 
     def add_handler(self, handler: Handler):
         self.handlers.append(handler)
@@ -169,6 +170,8 @@ class PluginService:
     # noinspection PyTypeChecker
     async def raise_event(self, event: UpEvent):
         tasks = []
+
+        self.events.append(event)
 
         for handler in self.handlers:
             if event.type == handler.type:
@@ -246,3 +249,5 @@ class PluginService:
 
 if not PluginService.services:
     PluginService.load()
+
+logger.info("Storage Path: {path}", path=PluginService.storage_path.absolute())

@@ -6,10 +6,10 @@ from log import logger
 from service.manager import PluginService
 from service.structures import ClientInfo
 
-Bp = Blueprint('ws:status', __name__, url_prefix='/ws/status')
+Bp = Blueprint('ws:status', __name__, url_prefix='/ws')
 
 
-@Bp.websocket('/')
+@Bp.websocket('/status')
 async def connection():
     client_info = ClientInfo(sid=uuid.UUID('00000000-0000-0000-0000-000000000000'), name='plugin', version='0.0.1')
     data = (await websocket.receive_json())
@@ -27,3 +27,8 @@ async def connection():
     client_info.sid = service.sid  # sync sid
 
     await service.add_client().process(websocket)
+
+
+@Bp.route('/connect')
+async def connect():
+    pass
