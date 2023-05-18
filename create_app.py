@@ -1,8 +1,11 @@
 import pathlib
 from http import HTTPStatus
 
+import quart_flask_patch
 from patch_old import placeholder
+from oauth import init_oauth
 
+# noinspection PyUnresolvedReferences
 from quart import Quart
 from service.manager import PluginService
 from helpers import LocatePluginTypeConvertor, LocatePluginConvertor, internal_error_handler
@@ -25,5 +28,7 @@ def create_app():
     app.register_blueprint(LegacyAPI)
     app.register_blueprint(ServiceWS)
     app.register_blueprint(HTTPService)
+
+    init_oauth(app)
 
     return app

@@ -10,15 +10,6 @@ from strongtyping.strong_typing import match_class_typing
 StrSetArrayType = list[str] | tuple[str] | set[str]
 
 
-class MyStrEnum(str, enum.Enum):
-    def __repr__(self):
-        return self.value
-
-
-if not hasattr(enum, 'StrEnum'):
-    enum.StrEnum = MyStrEnum
-
-
 class PackageInfo(TypedDict, total=False):
     name: str
     description: str
@@ -207,7 +198,12 @@ class Handler(ABC):
     type = 'default'
 
     @abstractmethod
-    async def emit(self, plugin: "PluginService", event: UpEvent):
+    async def emit(self, plugin, event: UpEvent):
+        """
+
+        :param event: Event
+        :type plugin: service.manager.PluginService
+        """
         pass
 
 
@@ -215,7 +211,12 @@ class ReportHandler(Handler, ABC):
     type = UpEventType.report
 
     @abstractmethod
-    async def emit(self, plugin: "PluginService", report: ReportEvent):
+    async def emit(self, plugin, report: ReportEvent):
+        """
+
+        :param report: ReportEvent
+        :type plugin: service.manager.PluginService
+        """
         pass
 
 
@@ -223,7 +224,12 @@ class NoticeHandler(Handler, ABC):
     type = GeneralEventType.notice
 
     @abstractmethod
-    async def emit(self, plugin: "PluginService", event: BaseEvent):
+    async def emit(self, plugin, event: BaseEvent):
+        """
+
+        :param event: NoticeEvent
+        :type plugin: service.manager.PluginService
+        """
         pass
 
 

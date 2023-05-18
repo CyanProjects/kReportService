@@ -1,4 +1,4 @@
-# noinspection all
+# noinspection PyUnresolvedReferences
 from loguru import logger
 import ever_loguru
 
