@@ -2,31 +2,16 @@ import datetime
 import uuid
 from http import HTTPStatus
 from json import JSONDecodeError
-from itsdangerous.serializer import Serializer
 
-from quart import Blueprint, request
+from quart import Blueprint, request, g
 from quart import json
 
+from oauth.funcs import login_required
 from service.manager import PluginService
 from service.structures import ReportEvent, JavascriptError, ReportLevel, UpEventType
 from helpers import ResponseHelper
 
 Bp = Blueprint('http:service', __name__, url_prefix='/api')
-
-s1 = Serializer('secret', 'access_tok', serializer=json)
-
-
-# @Bp.route('/auth/<plugin:plugin>')
-# async def auth(plugin: PluginService):
-#     response = ResponseHelper.Response('OK')
-#     old_access = request.cookies.get('access_token', None)
-#     if old_access:
-#         tokens: list = s1.loads(old_access)
-#         tokens.append(plugin.sid)
-#         response.set_cookie('access_token', s1.dumps(tokens))
-#     else:
-#         response.set_cookie('access_token', s1.dumps([plugin.sid]))
-#     return response
 
 
 @Bp.route('/report/<plugin:plugin>', methods=['POST'])
@@ -69,14 +54,16 @@ async def send_report(plugin: PluginService):
 
 
 @Bp.route('/report/<plugin:plugin>', methods=['GET'])
+@login_required
 async def get_report(plugin: PluginService):
-    return ResponseHelper.gen_kw(code=-1, _status=HTTPStatus.NOT_IMPLEMENTED)
-    # report_events = []
-    # for event in plugin.events:
-    #     if event.type == UpEventType.report:
-    #         report_events.append(event)
-    #
-    # return ResponseHelper.gen_kw(data=report_events)
+    user = g.user
+    user.owned_services
+    report_events = []
+    for event in plugin.events:
+        if event.type == UpEventType.report:
+            report_events.append(event)
+
+    return ResponseHelper.gen_kw(data=report_events)
 
 
 @Bp.route('/plugin/name/<string:name>', methods=['PUT', 'POST'])

@@ -1,74 +1,51 @@
+import uuid
 from datetime import datetime, timedelta
 from typing import Optional
 
-from flask_oauthlib.provider import OAuth2Provider
-from quart import Quart
-from oauth.structures import OAuthStorage, Token, User
-
-oauth = OAuth2Provider()
+from quart import Quart, g, session
+from oauth.structures import OAuthStorage, Client, Token, User
+from authlib.integrations.flask_oauth2 import AuthorizationServer
 
 
-@oauth.clientgetter
-def load_client(client_id: str):
-    return OAuthStorage.clients[client_id]
-
-
-@oauth.tokengetter
-def load_token(access_token=None, refresh_token=None):
-    if access_token:
-        for token in OAuthStorage.tokens.values():
-            if token.access_token == access_token:
-                return token
-    elif refresh_token:
-        for token in OAuthStorage.tokens.values():
-            if token.refresh_token == refresh_token:
-                return token
-
-
-@oauth.tokensetter
-def save_token(token, request, *args, **kwargs):
-    tokens = []
-    for tok in OAuthStorage.tokens.values():
-        if tok.client_id == request.client.client_id and tok.user_id == request.user.id:
-            tok.delete()
-
-    expires_in = token.get('expires_in')
-    expires = datetime.utcnow() + timedelta(seconds=expires_in)
-
-    tok = Token(
-        access_token=token['access_token'],
-        refresh_token=token['refresh_token'],
-        token_type=token['token_type'],
-        scopes=token['scope'],
-        expires=expires,
-        client=OAuthStorage.clients[request.client.client_id],
-        user=OAuthStorage.users[request.user.id],
-    )
-
-    tok.add()
-    OAuthStorage.save()
-    return tok
-
-
-@oauth.usergetter
-def get_user(username, password, *args, **kwargs):
-    user: Optional[User] = None
-    for u in OAuthStorage.users.values():
-        if u.name == username:
-            user = u
-            break
-    if not user:
-        return None
-    if user.check_auth(password):
-        return user
+def current_user():
+    if 'id' in session:
+        uid = session['id']
+        return OAuthStorage.users[uuid.UUID(uid)]
     return None
 
 
+def query_client(client_id: uuid.UUID | str | int):
+    return OAuthStorage.clients.pop()
+
+
+def save_token(token_data, request):
+    token = Token(
+        client=request.client,
+        **token_data
+    )
+    token.add()
+    OAuthStorage.save()
+
+
+authorization = AuthorizationServer(
+    query_client=query_client, save_token=save_token
+)
+
+
 def init_oauth(app: Quart):
-    oauth.init_app(app)
+    authorization.init_app(app)
 
-    from oauth.oauth_bp import Bp as OAuthBlueprint
+    from oauth.auth_bp import Bp as AuthBlueprint
+    from oauth.oauth_api_bp import Bp as OAuthAPIBlueprint
 
-    app.register_blueprint(OAuthBlueprint)
+    app.register_blueprint(AuthBlueprint)
+    app.register_blueprint(OAuthAPIBlueprint)
+
+    app.before_serving(OAuthStorage.load)
+    app.after_serving(OAuthStorage.save)
+
+    @app.before_request
+    async def set_user():
+        g.user = current_user()
 
     return app

@@ -4,7 +4,8 @@ import pickle
 import pathlib
 import random
 import uuid
-from dataclasses import dataclass, field, InitVar
+from dataclasses import dataclass, field
+from authlib.oauth2.rfc6749 import TokenMixin, ClientMixin
 from hashlib import sha256
 from enum import StrEnum
 from typing import Optional, Literal
@@ -12,48 +13,40 @@ from typing import Optional, Literal
 
 class OAuthStorage:
     base_storage_path = pathlib.Path('./data')
-    clients: dict[str, "Client"] = {}
-    users: dict[str, "User"] = {}
-    grants: dict[int, "Grant"] = {}
-    tokens: dict[int, "Token"] = {}
+    clients: dict[uuid.UUID, "Client"] = {}
+    users: dict[uuid.UUID, "User"] = {}
+    tokens: dict[uuid.UUID, "Token"] = {}
 
     @classmethod
     def save(cls):
-        grants_path = cls.base_storage_path / 'grants.dat'
+        cls.base_storage_path.mkdir(parents=True, exist_ok=True)
         tokens_path = cls.base_storage_path / 'tokens.dat'
         users_path = cls.base_storage_path / 'users.dat'
         clients_path = cls.base_storage_path / 'clients.dat'
 
-        if not grants_path.is_file():
-            grants_path.unlink(True)
-        with grants_path.open('wb') as grants_fp:
-            pickle.dump(cls.grants, grants_fp)
-
         if not tokens_path.is_file():
             tokens_path.unlink(True)
+            tokens_path.touch()
         with tokens_path.open('wb') as tokens_fp:
             pickle.dump(cls.tokens, tokens_fp)
 
         if not users_path.is_file():
             users_path.unlink(True)
+            users_path.touch()
         with users_path.open('wb') as users_fp:
             pickle.dump(cls.users, users_fp)
 
         if not clients_path.is_file():
             clients_path.unlink(True)
+            clients_path.touch()
         with clients_path.open('wb') as clients_fp:
             pickle.dump(cls.clients, clients_fp)
 
     @classmethod
     def load(cls):
-        grants_path = cls.base_storage_path / 'grants.dat'
         tokens_path = cls.base_storage_path / 'tokens.dat'
         users_path = cls.base_storage_path / 'users.dat'
         clients_path = cls.base_storage_path / 'clients.dat'
-
-        if grants_path.is_file():
-            with grants_path.open('rb') as grants_fp:
-                cls.grants = pickle.load(grants_fp)
 
         if tokens_path.is_file():
             with tokens_path.open('rb') as tokens_fp:
@@ -79,11 +72,14 @@ class User:
     owned_services: list[uuid.UUID] = field(default_factory=list)
 
     def check_auth(self, password: str):
-        return sha256(sha256(password).digest()).hexdigest() == self.password_hash
+        return sha256(sha256(password.encode('u8')).digest()).hexdigest() == self.password_hash
 
     @property
     def user_id(self) -> str:
         return str(self.uid)
+
+    def get_user_id(self) -> int:
+        return self.uid.int
 
     def __hash__(self):
         return hash(self.uid)
@@ -93,45 +89,57 @@ class Scopes(StrEnum):
     ...
 
 
-class ClientType(StrEnum):
-    public = 'public'
-    confidential = "confidential"
-
-
-"""
-The client should contain at least these properties:
-
-client_id: A random string
-client_secret: A random string
-client_type: A string represents if it is confidential
-redirect_uris: A list of redirect uris
-default_redirect_uri: One of the redirect uris
-default_scopes: Default scopes of the client
-"""
-
-
 @dataclass
-class Client:
-    default_scopes: list[str]
-    client_type: ClientType = field(init=False)
-    name: str
+class Client(ClientMixin):
     user: User
-    description: Optional[str]
-    cid: uuid.UUID
-    client_secret: str
     redirect_uris: list[str]
-    default_redirect_uri: str
+    scopes: list[str]
+    cid: Optional[uuid.UUID] = None
+    client_secret: Optional[str] = ''
 
     def __post_init__(self):
-        self.client_type = ClientType.public
+        if not self.cid:
+            self.cid = uuid.uuid4()
+
+    def add(self):
+        if self.cid not in OAuthStorage.users:
+            OAuthStorage.users[self.cid] = self
+
+    @property
+    def grant_types(self):
+        return ["password"]
+
+    def get_client_id(self):
+        return self.client_id
+
+    def get_default_redirect_uri(self):
+        return self.redirect_uris[0]
+
+    def get_allowed_scope(self, scope: Optional[str]):
+        if not scope:
+            return ''
+        allowed = set(self.scopes)
+        return ','.join(([s for s in scope.split() if s in allowed]))
+
+    def check_redirect_uri(self, redirect_uri: str):
+        return True
+
+    def check_client_secret(self, client_secret: str):
+        return sha256(client_secret.encode()).hexdigest() \
+            == sha256(self.client_secret.encode()).hexdigest()
+
+    def check_endpoint_auth_method(self, method, endpoint):
+        pass
+
+    def check_response_type(self, response_type):
+        return True
+
+    def check_grant_type(self, grant_type):
+        return grant_type in self.grant_types
 
     @property
     def user_id(self) -> str:
         return self.user.user_id
-
-    @property
-    def default_redirect_uri(self) -> str:
-        return self.redirect_uris[0]
 
     @property
     def client_id(self) -> str:
@@ -141,67 +149,38 @@ class Client:
         return hash(self.cid)
 
 
-"""
-A grant token should contain at least this information:
-
-client_id: A random string of client_id
-code: A random string
-user: The authorization user
-scopes: A list of scope
-expires: A datetime.datetime in UTC
-redirect_uri: A URI string
-delete: A function to delete itself
-"""
-
-
 @dataclass
-class Grant:
-    user: User
-    code: str
-    scopes: list[str]
-    redirect_uri: str
-    expires: datetime.datetime
-    client: Client
-    id: int = field(default_factory=lambda: random.randint(10, 1000000))
-
-    def delete(self):
-        OAuthStorage.grants.pop(self.id)
-
-    @property
-    def client_id(self):
-        return self.client.client_id
-
-
-"""
-A bearer token requires at least this information:
-
-access_token: A string token
-refresh_token: A string token
-client_id: ID of the client
-scopes: A list of scopes
-expires: A datetime.datetime object
-user: The user object
-delete: A function to delete itself
-"""
-
-
-@dataclass
-class Token:
+class Token(TokenMixin):
+    tid: uuid.UUID
     access_token: str
     refresh_token: str
     client: Client
     scopes: list[str]
-    expires: datetime.datetime
-    user: User
+    expires_at: datetime.datetime
     token_type: Literal["Bearer"] = 'Bearer'
-    id: int = field(default_factory=lambda: random.randint(10, 1000000))
+    revoked: bool = False
+
+    def check_client(self, client: Client):
+        return self.client_id == client.client_id
+
+    def get_scope(self):
+        return ','.join(self.scopes)
+
+    def get_expires_in(self):
+        return self.expires_at.timestamp()
+
+    def is_expired(self):
+        return self.expires_at < datetime.datetime.utcnow()
+
+    def is_revoked(self):
+        return self.revoked
 
     def add(self):
-        if self.id not in OAuthStorage.tokens:
-            OAuthStorage.tokens[self.id] = self
+        if self.tid not in OAuthStorage.tokens:
+            OAuthStorage.tokens[self.tid] = self
 
     def delete(self):
-        OAuthStorage.tokens.pop(self.id)
+        OAuthStorage.tokens.pop(self.tid)
 
     @property
     def client_id(self) -> str:
