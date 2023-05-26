@@ -233,7 +233,7 @@ class PluginService:
         return service
 
     @classmethod
-    def register(cls, sid: uuid.UUID = None, name: str = None, handlers=None) -> Self:
+    def register(cls, sid: uuid.UUID, name: str = None, handlers=None) -> Self:
         if handlers is None:
             handlers = []
         service = PluginService(name=name, sid=sid, handlers=handlers)
