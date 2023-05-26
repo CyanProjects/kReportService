@@ -12,8 +12,7 @@ from quart import Websocket, json
 
 from log import logger
 from .exceptions import PluginNotFoundError, InvalidPluginError
-from .structures import Handler, StatusEvent, BroadcastEvent, DownEvent, event_mapping, UpEvent, \
-    ReportHandler, ReportEvent, DisconnectEvent, ClientInfo, PluginInfo
+from .structures import *
 
 
 class FileReportHandler(ReportHandler):
@@ -45,10 +44,14 @@ class ServiceClient:
         self.down_pending_event: asyncio.Queue[DownEvent] = asyncio.Queue(queue_max)
         self.blocker: Optional[asyncio.Barrier] = None
 
-    async def event_receive(self):
+    async def event_raise(self):
         while True:
+            if self.blocker is not None:
+                await self.blocker.wait()
+                return
             event = await self.up_pending_event.get()
-            await self.parent_plugin.raise_event(event)
+            if not isinstance(event, ClosedEvent):
+                await self.parent_plugin.raise_event(event)
 
     def add_processor(self):
         self.count += 1
@@ -57,13 +60,14 @@ class ServiceClient:
         tasks = (
             asyncio.create_task(self.send(websocket)),
             asyncio.create_task(self.receive(websocket)),
-            asyncio.create_task(self.event_receive())
+            asyncio.create_task(self.event_raise())
         )
 
         await asyncio.gather(*tasks)
 
     async def close(self):
         await self.down_pending_event.put(DisconnectEvent())
+        await self.up_pending_event.put(ClosedEvent())
         self.blocker = asyncio.Barrier(self.count + 1)
         await self.blocker.wait()
         self.parent_plugin.clients.pop(self.cid)
@@ -175,9 +179,9 @@ class PluginService:
 
         for handler in self.handlers:
             if event.type == handler.type:
-                tasks.append(asyncio.create_task(handler.emit(event)))
+                tasks.append(asyncio.create_task(handler.emit(self, event)))
             elif handler.type == 'default':
-                tasks.append(asyncio.create_task(handler.emit(event)))
+                tasks.append(asyncio.create_task(handler.emit(self, event)))
 
         await asyncio.gather(*tasks)
 
@@ -222,6 +226,8 @@ class PluginService:
     def register_with_name(cls, name: str = None, sid: uuid.UUID = None, handlers=None) -> Self:
         if handlers is None:
             handlers = []
+        if not sid:
+            sid = uuid.uuid4()
         service = PluginService(name=name, sid=sid, handlers=handlers)
         cls.save()
         return service
@@ -230,8 +236,6 @@ class PluginService:
     def register(cls, sid: uuid.UUID = None, name: str = None, handlers=None) -> Self:
         if handlers is None:
             handlers = []
-        if not sid:
-            sid = uuid.uuid4()
         service = PluginService(name=name, sid=sid, handlers=handlers)
         cls.save()
         return service
@@ -242,6 +246,9 @@ class PluginService:
         return instance_dict
 
     def __setstate__(self, state: dict[str, Any]):
+        state.setdefault('events', [])
+        state.setdefault('_inited', True)
+        state['clients'] = {}
         for key in state:
             self.__dict__[key] = state[key]
         return state

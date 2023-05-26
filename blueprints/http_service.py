@@ -57,7 +57,10 @@ async def send_report(plugin: PluginService):
 @login_required
 async def get_report(plugin: PluginService):
     user = g.user
-    user.owned_services
+    if not user:
+        ResponseHelper.gen_kw(code=401, _status=HTTPStatus.UNAUTHORIZED, msg='User not login')
+    if plugin.sid not in user.owned_services:
+        ResponseHelper.gen_kw(code=401, _status=HTTPStatus.UNAUTHORIZED, msg='User not owned this PluginService')
     report_events = []
     for event in plugin.events:
         if event.type == UpEventType.report:

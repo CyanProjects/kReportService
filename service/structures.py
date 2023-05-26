@@ -93,7 +93,7 @@ class ReportLevel(enum.StrEnum):
 class JavascriptError(TypedDict):
     name: str
     message: str
-    stacktrace: Optional[str]
+    stack: Optional[str]
 
 
 @dataclass
@@ -103,8 +103,6 @@ class BaseEvent:
 
 @dataclass
 class UpEvent(BaseEvent):
-    sid: uuid.UUID
-    cid: Optional[uuid.UUID]
     type: UpEventType | GeneralEventType
 
 
@@ -114,12 +112,20 @@ class DownEvent(BaseEvent):
 
 
 @dataclass
-class SpecialEvent(DownEvent):
+class SpecialEvent:
     type: SpecialEventType
 
 
 @dataclass
-class DisconnectEvent(SpecialEvent):
+class ClosedEvent(UpEvent, SpecialEvent):
+    type: Literal[SpecialEventType.closed] = field(init=False)
+
+    def __post_init__(self):
+        self.type = SpecialEventType.closed
+
+
+@dataclass
+class DisconnectEvent(DownEvent, SpecialEvent):
     type: Literal[SpecialEventType.disconnect] = field(init=False)
 
     def __post_init__(self):
@@ -172,10 +178,12 @@ class MessageEvent(BaseEvent):
 
 @dataclass
 class ReportEvent(UpEvent):
+    sid: uuid.UUID
     type: Literal[UpEventType.report] = field(init=False)
     level: ReportLevel
     description: str
     timestamp: int | float | datetime.datetime = datetime.datetime.utcnow()
+    cid: Optional[uuid.UUID] = None
     info: Optional[str] = None
     error: Optional[JavascriptError] = None
     log: Optional[str] = None

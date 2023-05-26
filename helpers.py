@@ -34,7 +34,7 @@ class ResponseHelper:
     def gen_json_response(cls, dictionary: dict, _status: HTTPStatus = HTTPStatus.OK):
         if _status == HTTPStatus.NO_CONTENT:
             return Response(status=_status)
-        return Response(cls.gen_json_str(dictionary), status=_status)
+        return Response(cls.gen_json_str(dictionary), status=_status, mimetype='application/json')
 
     @classmethod
     def gen_kw_json_response(cls, _status: HTTPStatus = HTTPStatus.OK, **kwargs):
